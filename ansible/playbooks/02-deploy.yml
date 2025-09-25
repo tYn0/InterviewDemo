@@ -1,0 +1,36 @@
+- hosts: demo
+  become: yes
+
+  pre_tasks:
+    - name: Read Terraform outputs (JSON)
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+      args:
+        chdir: "{{ playbook_dir }}/../../infra"
+      command: terraform output -json
+      register: tfjson
+
+    - name: Set variables from Terraform output
+      delegate_to: localhost
+      become: false
+      run_once: true
+      set_fact:
+        app_host:    "{{ (tfjson.stdout | from_json).app_host.value }}"
+        static_host: "{{ (tfjson.stdout | from_json).static_host.value }}"
+        acme_email:  "christianfarkas.chf@gmail.com"
+
+  tasks:
+    - name: Render docker-compose.yml from template with hostnames
+      template:
+        src: "../templates/docker-compose.yml.j2"
+        dest: "/opt/demo/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Bring stack up with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: /opt/demo
+        state: present
